@@ -14,7 +14,6 @@ export default function TimeTravelAccountingApp() {
   const [viewMode, setViewMode] = useState<ViewMode>('HISTORY');
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('YEAR_LIST');
   
-  // 年/月/日 時間維度狀態
   const [availableYears, setAvailableYears] = useState<number[]>([new Date().getFullYear()]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
@@ -28,19 +27,19 @@ export default function TimeTravelAccountingApp() {
 
   const refreshData = async () => {
     setLoading(true);
+    // 加入 order 確保基底資料依時間降冪排列 (最新的在最上面)
     const { data: rawData, error } = await supabase
       .from('sales_records')
       .select('*')
-      .eq('is_deleted', viewMode === 'TRASH');
+      .eq('is_deleted', viewMode === 'TRASH')
+      .order('created_at', { ascending: false });
 
     if (!error && rawData) {
-      // 1. 動態計算所有存在的年份 (提供給下拉選單)
       if (viewMode !== 'TRASH') {
         const yearsSet = new Set(rawData.map(item => new Date(item.created_at).getFullYear()));
-        const yearsArray = Array.from(yearsSet).sort((a, b) => b - a); // 降冪排列 (最新年在上)
+        const yearsArray = Array.from(yearsSet).sort((a, b) => b - a); 
         if (yearsArray.length === 0) yearsArray.push(new Date().getFullYear());
         setAvailableYears(yearsArray);
-        // 如果目前選的年份不在資料庫裡(例如剛刪光)，強制切回最新年
         if (!yearsArray.includes(selectedYear) && yearsArray.length > 0) {
           setSelectedYear(yearsArray[0]);
         }
@@ -57,16 +56,17 @@ export default function TimeTravelAccountingApp() {
         setDisplayTotal(rawData.reduce((s, i) => s + Number(i.amount), 0));
       } 
       else if (drillLevel === 'YEAR_LIST') {
-        // 第一層：列出 selectedYear 的 12 個月
+        // 第一層：產生月份後，使用 reverse() 將 12月排到 1月前面
         const monthly = Array.from({ length: 12 }, (_, i) => {
           const mData = rawData.filter(item => new Date(item.created_at).getMonth() === i && new Date(item.created_at).getFullYear() === selectedYear);
           return { label: `${i + 1}月`, monthIndex: i, total: mData.reduce((s, item) => s + Number(item.amount), 0), sourceSummary: getSourceSummary(mData) };
-        }).filter(m => m.total > 0);
+        }).filter(m => m.total > 0).reverse();
+        
         setListData(monthly);
         setDisplayTotal(monthly.reduce((s, m) => s + m.total, 0));
       } 
       else if (drillLevel === 'MONTH_LIST') {
-        // 第二層：列出 selectedYear 與 selectedMonth 的所有日期
+        // 第二層：將日期資料轉換為 Timestamp 並進行降冪排序
         const monthItems = rawData.filter(item => new Date(item.created_at).getMonth() === selectedMonth && new Date(item.created_at).getFullYear() === selectedYear);
         const dailyMap: Record<string, { total: number, data: any[] }> = {};
         monthItems.forEach(item => {
@@ -75,12 +75,16 @@ export default function TimeTravelAccountingApp() {
           dailyMap[d].total += Number(item.amount);
           dailyMap[d].data.push(item);
         });
-        const summary = Object.entries(dailyMap).map(([date, obj]) => ({ label: date, total: obj.total, dateKey: date, sourceSummary: getSourceSummary(obj.data) }));
+        
+        const summary = Object.entries(dailyMap).map(([date, obj]) => ({ 
+          label: date, total: obj.total, dateKey: date, sourceSummary: getSourceSummary(obj.data) 
+        })).sort((a, b) => new Date(b.dateKey).getTime() - new Date(a.dateKey).getTime());
+
         setListData(summary);
         setDisplayTotal(summary.reduce((s, d) => s + d.total, 0));
       }
       else if (drillLevel === 'DAY_DETAILS' && selectedDay) {
-        // 第三層：列出該日所有明細
+        // 第三層：由於 rawData 已經在 Supabase 端排序過，這裡出來的明細自然會是最新的在上
         const details = rawData.filter(item => new Date(item.created_at).toLocaleDateString('zh-TW') === selectedDay);
         setListData(details);
         setDisplayTotal(details.reduce((s, i) => s + Number(i.amount), 0));
@@ -117,8 +121,6 @@ export default function TimeTravelAccountingApp() {
         {/* 總額與年份切換看板 */}
         <div className="bg-white rounded-2xl p-6 mb-4 shadow-sm border border-slate-100">
           <div className="flex justify-between items-center mb-1">
-            
-            {/* 動態標題與年份選擇器 */}
             {viewMode === 'TRASH' ? (
               <p className="text-slate-400 text-xs font-bold">回收站總額</p>
             ) : drillLevel === 'YEAR_LIST' ? (
@@ -137,8 +139,6 @@ export default function TimeTravelAccountingApp() {
             ) : (
               <p className="text-slate-400 text-xs font-bold">{selectedDay} 明細</p>
             )}
-
-            {/* 返回按鈕 */}
             {viewMode === 'HISTORY' && drillLevel !== 'YEAR_LIST' && (
               <button onClick={() => drillLevel === 'DAY_DETAILS' ? setDrillLevel('MONTH_LIST') : setDrillLevel('YEAR_LIST')} className="text-blue-600 text-xs font-bold px-2 py-1 bg-blue-50 rounded-md">← 返回上層</button>
             )}
