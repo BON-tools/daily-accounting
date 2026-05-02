@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 type ViewMode = 'HISTORY' | 'TRASH';
 type DrillLevel = 'YEAR_LIST' | 'MONTH_LIST' | 'DAY_DETAILS';
 
-export default function AdvancedSourceAccounting() {
+export default function FinalOptimizedApp() {
   const [amount, setAmount] = useState("0");
   const [source, setSource] = useState("百貨");
   const [customSource, setCustomSource] = useState("");
@@ -31,15 +31,12 @@ export default function AdvancedSourceAccounting() {
       .eq('is_deleted', viewMode === 'TRASH');
 
     if (!error && rawData) {
-      // 處理統計邏輯：計算每個分類的總額
       const getSourceSummary = (filteredData: any[]) => {
         const summary: Record<string, number> = {};
         filteredData.forEach(item => {
           summary[item.source] = (summary[item.source] || 0) + Number(item.amount);
         });
-        return Object.entries(summary)
-          .map(([name, total]) => ({ name, total }))
-          .filter(s => s.total > 0); // 隱藏 0 元項目
+        return Object.entries(summary).map(([name, total]) => ({ name, total })).filter(s => s.total > 0);
       };
 
       if (viewMode === 'TRASH') {
@@ -82,12 +79,13 @@ export default function AdvancedSourceAccounting() {
     const finalSource = isCustom ? customSource : source;
     const numericAmount = parseFloat(amount);
     if (numericAmount <= 0 || !finalSource) return;
-    const { error } = await supabase.from('sales_records').insert([{ 
-      amount: numericAmount, 
-      source: finalSource,
-      is_deleted: false 
-    }]);
+    const { error } = await supabase.from('sales_records').insert([{ amount: numericAmount, source: finalSource, is_deleted: false }]);
     if (!error) { setAmount("0"); setCustomSource(""); refreshData(); }
+  };
+
+  const toggleDelete = async (id: string, currentStatus: boolean) => {
+    const { error } = await supabase.from('sales_records').update({ is_deleted: !currentStatus }).eq('id', id);
+    if (!error) refreshData();
   };
 
   return (
@@ -95,52 +93,77 @@ export default function AdvancedSourceAccounting() {
       <div className="w-full max-w-md">
         
         {/* 模式切換 */}
-        <div className="flex bg-white rounded-xl p-1 mb-4 shadow-sm border">
-          <button onClick={() => { setViewMode('HISTORY'); setDrillLevel('YEAR_LIST'); }} className={`flex-1 py-2 text-xs font-bold rounded-lg ${viewMode === 'HISTORY' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>歷史系統</button>
-          <button onClick={() => setViewMode('TRASH')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${viewMode === 'TRASH' ? 'bg-red-500 text-white' : 'text-slate-400'}`}>回收站</button>
+        <div className="flex bg-white rounded-xl p-1 mb-4 shadow-sm border border-slate-200">
+          <button onClick={() => { setViewMode('HISTORY'); setDrillLevel('YEAR_LIST'); }} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${viewMode === 'HISTORY' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>歷史帳本</button>
+          <button onClick={() => setViewMode('TRASH')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${viewMode === 'TRASH' ? 'bg-red-500 text-white' : 'text-slate-400'}`}>回收站</button>
         </div>
 
-        {/* 記帳區域 */}
+        {/* 記帳看板 (只在歷史模式頂層顯示) */}
         {viewMode === 'HISTORY' && drillLevel === 'YEAR_LIST' && (
           <div className="bg-slate-900 rounded-3xl p-6 mb-6 shadow-2xl">
             <h2 className="text-5xl font-mono font-bold text-green-400 text-right mb-4">${amount}</h2>
-            
-            {/* 來源選擇器 */}
             <div className="grid grid-cols-3 gap-2 mb-4">
               {sources.map(s => (
                 <button key={s} onClick={() => {setSource(s); setIsCustom(false);}} className={`py-2 rounded-lg text-xs font-bold ${!isCustom && source === s ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400'}`}>{s}</button>
               ))}
-              <button onClick={() => setIsCustom(true)} className={`py-2 rounded-lg text-xs font-bold ${isCustom ? 'bg-orange-500 text-white' : 'bg-slate-800 text-slate-400'}`}>開放式輸入</button>
+              <button onClick={() => setIsCustom(true)} className={`py-2 rounded-lg text-xs font-bold ${isCustom ? 'bg-orange-500 text-white' : 'bg-slate-800 text-slate-400'}`}>開放輸入</button>
             </div>
-            
-            {isCustom && (
-              <input type="text" value={customSource} onChange={(e) => setCustomSource(e.target.value)} placeholder="輸入來源名稱..." className="w-full mb-4 p-2 rounded-lg bg-slate-800 text-white border border-slate-700 text-sm" />
-            )}
-
+            {isCustom && <input type="text" value={customSource} onChange={(e) => setCustomSource(e.target.value)} placeholder="自定義來源..." className="w-full mb-4 p-2 rounded-lg bg-slate-800 text-white border border-slate-700 text-sm" />}
             <div className="grid grid-cols-3 gap-3">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0].map((num) => (
-                <button key={num} onClick={() => num === "C" ? setAmount("0") : setAmount(prev => prev === "0" ? num.toString() : prev + num)} className="h-12 bg-slate-800 text-white rounded-xl font-bold">{num}</button>
+                <button key={num} onClick={() => num === "C" ? setAmount("0") : setAmount(prev => prev === "0" ? num.toString() : prev + num)} className="h-12 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-700">{num}</button>
               ))}
-              <button onClick={submitData} className="h-12 bg-blue-600 text-white rounded-xl font-bold">送出</button>
+              <button onClick={submitData} className="h-12 bg-blue-600 text-white rounded-xl font-bold active:bg-blue-500">送出</button>
             </div>
           </div>
         )}
 
-        {/* 顯示列表 */}
-        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+        {/* 數據列表 */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
-            <span className="font-bold text-slate-500 text-sm">業績分類統計</span>
-            {drillLevel !== 'YEAR_LIST' && <button onClick={() => drillLevel === 'DAY_DETAILS' ? setDrillLevel('MONTH_LIST') : setDrillLevel('YEAR_LIST')} className="text-blue-600 text-xs font-bold">← 返回</button>}
+            <span className="font-bold text-slate-500 text-sm">
+              {viewMode === 'TRASH' ? '回收站' : drillLevel === 'YEAR_LIST' ? '年度統計' : drillLevel === 'MONTH_LIST' ? `${selectedMonth!+1}月統計` : `${selectedDay} 明細`}
+            </span>
+            {viewMode === 'HISTORY' && drillLevel !== 'YEAR_LIST' && (
+              <button onClick={() => drillLevel === 'DAY_DETAILS' ? setDrillLevel('MONTH_LIST') : setDrillLevel('YEAR_LIST')} className="text-blue-600 text-xs font-bold">← 返回</button>
+            )}
           </div>
-          <div className="divide-y">
+          
+          <div className="divide-y divide-slate-50 max-h-[500px] overflow-y-auto">
             {listData.map((item, i) => (
-              <div key={i} onClick={() => drillLevel !== 'DAY_DETAILS' && viewMode !== 'TRASH' && (drillLevel === 'YEAR_LIST' ? (setSelectedMonth(item.monthIndex), setDrillLevel('MONTH_LIST')) : (setSelectedDay(item.dateKey), setDrillLevel('DAY_DETAILS')))} className="p-4 hover:bg-slate-50 cursor-pointer">
-                <div className="flex justify-between items-baseline mb-2">
-                  <span className="font-black text-slate-700 text-lg">{item.label || `$${item.amount}`}</span>
-                  <span className="text-blue-600 font-mono font-bold">${(item.total || item.amount).toLocaleString()}</span>
+              <div key={i} 
+                onClick={() => drillLevel !== 'DAY_DETAILS' && viewMode !== 'TRASH' && (drillLevel === 'YEAR_LIST' ? (setSelectedMonth(item.monthIndex), setDrillLevel('MONTH_LIST')) : (setSelectedDay(item.dateKey), setDrillLevel('DAY_DETAILS')))}
+                className={`p-4 hover:bg-slate-50 transition-all ${drillLevel !== 'DAY_DETAILS' && viewMode !== 'TRASH' ? 'cursor-pointer' : ''}`}>
+                
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col">
+                    {/* 明細層左側顯示類別(Source)；統計層左側顯示日期(Label) */}
+                    <span className="font-black text-slate-700 text-lg">
+                      {drillLevel === 'DAY_DETAILS' ? item.source : item.label}
+                    </span>
+                    {item.created_at && <span className="text-[10px] text-slate-400">{new Date(item.created_at).toLocaleTimeString()}</span>}
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <span className={`font-mono font-bold ${viewMode === 'TRASH' ? 'text-red-400' : 'text-blue-600'}`}>
+                      ${(item.total || item.amount).toLocaleString()}
+                    </span>
+                    
+                    {/* 功能按鈕區 */}
+                    {(drillLevel === 'DAY_DETAILS' || viewMode === 'TRASH') && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); toggleDelete(item.id, item.is_deleted); }}
+                        className={`ml-4 text-[10px] px-3 py-1 rounded-full border ${viewMode === 'TRASH' ? 'border-green-200 text-green-600' : 'border-red-100 text-red-400'}`}
+                      >
+                        {viewMode === 'TRASH' ? '還原' : '刪除'}
+                      </button>
+                    )}
+                    {viewMode === 'HISTORY' && drillLevel !== 'DAY_DETAILS' && <span className="ml-2 text-slate-300">›</span>}
+                  </div>
                 </div>
-                {/* 顯示該層級的所有來源總額 */}
-                {item.sourceSummary && (
+
+                {/* 顯示來源彙整（僅限統計層級） */}
+                {item.sourceSummary && drillLevel !== 'DAY_DETAILS' && (
                   <div className="flex flex-wrap gap-2">
                     {item.sourceSummary.map((s: any) => (
                       <span key={s.name} className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md border">
