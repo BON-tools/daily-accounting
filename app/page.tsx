@@ -23,7 +23,7 @@ export default function TimeTravelAccountingApp() {
   const [listData, setListData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const sources = ["百貨", "地攤", "市集", "蝦皮"];
+  const sources = ["百貨", "網路", "市集", "蝦皮"];
 
   const refreshData = async () => {
     setLoading(true);
