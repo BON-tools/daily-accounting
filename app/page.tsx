@@ -6,10 +6,17 @@ type ViewMode = 'HISTORY' | 'TRASH';
 type DrillLevel = 'YEAR_LIST' | 'MONTH_LIST' | 'DAY_DETAILS';
 
 export default function TimeTravelAccountingApp() {
+  // 取得當天日期的 YYYY-MM-DD 格式，作為預設值
+  const getTodayString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const [amount, setAmount] = useState("0");
   const [source, setSource] = useState("百貨");
   const [customSource, setCustomSource] = useState("");
   const [isCustom, setIsCustom] = useState(false);
+  const [entryDate, setEntryDate] = useState(getTodayString()); // 新增：記帳日期狀態
   
   const [viewMode, setViewMode] = useState<ViewMode>('HISTORY');
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('YEAR_LIST');
@@ -27,7 +34,6 @@ export default function TimeTravelAccountingApp() {
 
   const refreshData = async () => {
     setLoading(true);
-    // 加入 order 確保基底資料依時間降冪排列 (最新的在最上面)
     const { data: rawData, error } = await supabase
       .from('sales_records')
       .select('*')
@@ -56,7 +62,6 @@ export default function TimeTravelAccountingApp() {
         setDisplayTotal(rawData.reduce((s, i) => s + Number(i.amount), 0));
       } 
       else if (drillLevel === 'YEAR_LIST') {
-        // 第一層：產生月份後，使用 reverse() 將 12月排到 1月前面
         const monthly = Array.from({ length: 12 }, (_, i) => {
           const mData = rawData.filter(item => new Date(item.created_at).getMonth() === i && new Date(item.created_at).getFullYear() === selectedYear);
           return { label: `${i + 1}月`, monthIndex: i, total: mData.reduce((s, item) => s + Number(item.amount), 0), sourceSummary: getSourceSummary(mData) };
@@ -66,7 +71,6 @@ export default function TimeTravelAccountingApp() {
         setDisplayTotal(monthly.reduce((s, m) => s + m.total, 0));
       } 
       else if (drillLevel === 'MONTH_LIST') {
-        // 第二層：將日期資料轉換為 Timestamp 並進行降冪排序
         const monthItems = rawData.filter(item => new Date(item.created_at).getMonth() === selectedMonth && new Date(item.created_at).getFullYear() === selectedYear);
         const dailyMap: Record<string, { total: number, data: any[] }> = {};
         monthItems.forEach(item => {
@@ -84,7 +88,6 @@ export default function TimeTravelAccountingApp() {
         setDisplayTotal(summary.reduce((s, d) => s + d.total, 0));
       }
       else if (drillLevel === 'DAY_DETAILS' && selectedDay) {
-        // 第三層：由於 rawData 已經在 Supabase 端排序過，這裡出來的明細自然會是最新的在上
         const details = rawData.filter(item => new Date(item.created_at).toLocaleDateString('zh-TW') === selectedDay);
         setListData(details);
         setDisplayTotal(details.reduce((s, i) => s + Number(i.amount), 0));
@@ -99,8 +102,25 @@ export default function TimeTravelAccountingApp() {
     const finalSource = isCustom ? customSource : source;
     const numericAmount = parseFloat(amount);
     if (numericAmount <= 0 || !finalSource) return;
-    const { error } = await supabase.from('sales_records').insert([{ amount: numericAmount, source: finalSource, is_deleted: false }]);
-    if (!error) { setAmount("0"); setCustomSource(""); refreshData(); }
+
+    // 核心工程：組合選擇的日期與當下的時間，確保同日期的排序依然精確
+    const now = new Date();
+    const timeString = now.toTimeString().split(' ')[0]; // 取得 HH:MM:SS
+    const insertTimestamp = new Date(`${entryDate}T${timeString}`).toISOString();
+
+    const { error } = await supabase.from('sales_records').insert([{ 
+      amount: numericAmount, 
+      source: finalSource, 
+      is_deleted: false,
+      created_at: insertTimestamp // 覆寫資料庫預設時間
+    }]);
+
+    if (!error) { 
+      setAmount("0"); 
+      setCustomSource(""); 
+      // 注意：這裡不重置 entryDate，方便你連續回填同一天的多筆資料
+      refreshData(); 
+    }
   };
 
   const toggleDelete = async (id: string, currentStatus: boolean) => {
@@ -146,10 +166,24 @@ export default function TimeTravelAccountingApp() {
           <span className="text-4xl font-black">${displayTotal.toLocaleString()}</span>
         </div>
 
-        {/* 記帳看板 */}
+        {/* 記帳看板 (新增日期回填功能) */}
         {viewMode === 'HISTORY' && drillLevel === 'YEAR_LIST' && (
           <div className="bg-slate-900 rounded-3xl p-6 mb-6 shadow-2xl">
+            
+            {/* 日期選擇器 */}
+            <div className="flex justify-between items-center mb-4 bg-slate-800 p-2 rounded-xl">
+              <span className="text-slate-400 text-xs font-bold ml-2">入帳日期</span>
+              <input 
+                type="date" 
+                value={entryDate} 
+                onChange={(e) => setEntryDate(e.target.value)}
+                max={getTodayString()} // 防呆：限制最多只能選到今天
+                className="bg-transparent text-white text-sm outline-none font-mono cursor-pointer"
+              />
+            </div>
+
             <h2 className="text-5xl font-mono font-bold text-green-400 text-right mb-4">${amount}</h2>
+            
             <div className="grid grid-cols-3 gap-2 mb-4">
               {sources.map(s => (
                 <button key={s} onClick={() => {setSource(s); setIsCustom(false);}} className={`py-2 rounded-lg text-xs font-bold ${!isCustom && source === s ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400'}`}>{s}</button>
@@ -157,6 +191,7 @@ export default function TimeTravelAccountingApp() {
               <button onClick={() => setIsCustom(true)} className={`py-2 rounded-lg text-xs font-bold ${isCustom ? 'bg-orange-500 text-white' : 'bg-slate-800 text-slate-400'}`}>開放輸入</button>
             </div>
             {isCustom && <input type="text" value={customSource} onChange={(e) => setCustomSource(e.target.value)} placeholder="自定義來源..." className="w-full mb-4 p-2 rounded-lg bg-slate-800 text-white border border-slate-700 text-sm outline-none" />}
+            
             <div className="grid grid-cols-3 gap-3">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0].map((num) => (
                 <button key={num} onClick={() => num === "C" ? setAmount("0") : setAmount(prev => prev === "0" ? num.toString() : prev + num)} className="h-12 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-700">{num}</button>
