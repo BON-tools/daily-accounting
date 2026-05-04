@@ -71,7 +71,7 @@ export default function UltimateAccountingApp() {
   const [showSyncToast, setShowSyncToast] = useState(false); // 同步成功提示
   const [isMounted, setIsMounted] = useState(false);
 
-  const sources = ["百貨", "地攤", "市集", "蝦皮"];
+  const sources = ["百貨", "網路", "市集", "蝦皮"];
 
   // 3. 核心大腦：資料抓取與轉換 (修正 Race Condition)
   const refreshData = useCallback(async (signal?: { aborted: boolean }) => {
