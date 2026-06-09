@@ -1,6 +1,6 @@
 {
   "name": "專業記帳系統",
-  "short_name": "記帳",
+  "short_name": "藏寶箱",
   "description": "支援離線優先的多維度記帳系統",
   "start_url": "/",
   "display": "standalone",
@@ -10,12 +10,14 @@
     {
       "src": "/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
